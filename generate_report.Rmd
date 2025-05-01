@@ -1,0 +1,753 @@
+---
+title: "Assignment 2"
+author: "Huy"
+date: "2023-10-31"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Analysis of the Stock Market Fluctuations, Anomalies and Fear Index Using Data-driven Methodologies
+
+## Install Required Libraries For R Markdown Scripts
+
+**The following libraries need to be installed and included r code to properly run**
+
+```{r message = FALSE}
+library(rmarkdown)
+library(tidyverse) 
+library(ggplot2)
+library(readxl)
+library(caret)
+library(e1071)
+library(glmnet)
+library(ISLR)
+library(car)
+```
+
+## Introduction
+
+The stock market has always been an intriguing subject of study through the lens of data scientists and analysts. It is well-known that stock market operates in a mysterious ways which involve numerous shifts and changes. For this reason, the VIX index was generated as an estimator for such volatility.
+
+However, what are the considerable factors that determine the value of VIX indexes?
+
+Considering this all-hovering question, in this report, through using Statistical Models and their Corresponding Metrics, I aim to demonstrate it is probable to forecast the stock market fear index (VIX) to an extent of accuracy and the models could be used to predict the movement of the stock market in the future.
+
+
+# Phase 1
+
+## Load and Preprocess EMV_VIX_DATA Dataset
+
+```{r}
+# load the data
+df <- read_excel("/Users/hwey/Downloads/EMV_VIX_Data.xlsx")
+raw_data <- read_excel("/Users/hwey/Downloads/EMV_VIX_Data.xlsx")
+
+# exclude all observations with missing data
+df = na.omit(df)
+
+# return the dimensions of the data frame
+dim(df)
+
+# define the response variable 
+y <- df$VIX
+```
+
+```{r}
+# structure of the raw data set
+str(raw_data)
+```
+
+It is noticeable that the initial data frame contains a non-numerical data column, which is "Date". Therefore, we will temporarily remove this data variable to correctly implement the data matrix for model implementation. 
+
+```{r}
+# define matrix of predictor variables
+x <- model.matrix(VIX~., data = df[,-1])[,-1]
+dim(x)
+
+# remove non-numerical data column 'Date'
+data_ols <- df[,-1]
+```
+
+In this section, the raw data of the VIX and monthly EMV trackers are loaded into df. "VIX" index entries are assigned to be response variable, while the rest of the data entries (except date variables) are collected as predictors.
+The matrix of response variable is denoted by y and the matrix of predictive variables is denoted by x.
+
+Upon inspecting the raw data input, it is important to note that several EMV trackers have numerous zero entries. These variables include:
+
+-   Macro - Trade EMV Tracker.
+
+-   Marco - Business Investment and Sentiment EMV Tracker.
+
+-   Exchange Rates EMV Tracker.
+
+-   Intellectual Property Policy EMV Tracker.
+
+-   Immigration EMV Tracker.
+
+-   Other Regulation EMV Tracker.
+
+-   Transportation, Infrastructure, and Public Utilities EMV Tracker.
+
+-   Agricultural Policy EMV Tracker.
+
+In regards to data sparsity, the given data set does not neither empty data entries nor mismatch number of entries for the response variables and the predictors. However, the aforementioned variables, since their entries were filled with zero values, could cause model imbalance. It is essential to concern that many zero entries would shift the weight of the variables, however, since it is only 8 out of 45 variables that contain noticeable number of zero-entries, the remaining 37 variables would balance everything out. Hence, it is safe to proceed to model fitting with this data frame.
+
+## Linear Polynomial Regression
+
+Firstly, we can use Ordinary Least Squares Regression technique to verify the relationship between VIX and the EMV trackers.
+
+By the assumptions of linearity in its error term and coefficients and the independence between predictive variables, we can attempt to fit OLS Regression Model onto the imported dataset.
+
+### Fit Ordinary OLS Regression Model
+
+```{r pressure, echo=FALSE}
+# fit multiple linear regression model
+ols_model <- lm(data_ols$VIX~., data = data_ols)
+
+# view model summary 
+summary(ols_model)
+```
+The above model summary shows that: 
+
+- The OLS Regression model is statistically significant since p-value < 2.2e-16, which is less than $\alpha$=0.05.
+
+- Inspecting the metrics in the coefficients section, it is clear that 11 of the 
+45 variables are statistically significant with $\alpha$ values less than 0.05.
+
+- Since the Multiple R-squared metric of the model is 0.6214, the model explains 62.14% variability of VIX. 
+
+
+### Visualize OLS Regression Model
+
+```{r}
+# retrieve model statistics
+summary(ols_model)
+
+# produce added variable plots
+avPlots(ols_model)
+```
+
+### Visualize OLS Regression Residuals
+
+```{r}
+residual <- resid(ols_model)
+plot(fitted(ols_model), residual)
+abline(0,0)
+```
+
+```{r}
+# create QQ plot for the residuals
+qqnorm(residual)
+
+# add a diagonal line
+qqline(residual)
+```
+
+### Interpretation of OLS Regression Model
+
+According to the model summary, p-value is less than 2.2e-16, therefore, we can say that there is a significant relationship between VIX and other independent EMV variables. However, it is also significant to consider the Multiple R-squared metric of the model since it is 0.6214. This shows that only 62.14% of the variation in VIX values is accountable by the EMV trackers' values. Since only more than half of the variation in VIX is explainable by the EMV trackers in the model, it is safe to doubt the fitting of Ordinary Least Squared model to the data.
+
+Furthermore, it is important that OLS Regression Technique is performed under the assumptions of normality and homoscedasticity.
+
+In regards to normality, it is apparent from the Q-Q plot that the residuals of the OLS model fall roughly along the diagonal line. With insignificant data strays from the line, it can be concluded the assumption of normality is met.
+
+In regards to homoscedasticity, through examining the residual plot against the fitted model, the data points witness a particular pattern as they cluster in the intervals [-5, 5] on the y-axis and [10, 30] on the x axis. Thus, the residuals appear to not be randomly and evenly distributed. Hence, we fail to assume the randomness in the variances of independent variables.
+
+In conclusion, due to the failure to assume homoscedasticity between independent variables, coupled with the relatively low Multiple R-squared value, Ordinary Least Squared Regression is not reliable in explanation of the data.
+
+Thereafter, we may assume the existence mutlicollinearity on the grounds of insufficient evidence in linear relationship between VIX and the EMV trackers.
+
+```{r}
+vif(ols_model)
+```
+
+Upon examining the VIF score of the EMV trackers in response to the VIX values, many of them are relatively large such as "EMV" with 148.734215, "Political Uncertainty Tracker" with 64.972093, "Macroeconomic News and Outlook EMV Tracker" with 141.731168,\
+and "Macro -- Broad Quantity Indicators EMV Tracker" with 13.75098. Since these VIF scores are considerably large, it is conclusive there exists multicollinearity between variables in our data. Thereafter, it is necessary to apply Lasso Regression, Ridge Regression and Net Elastic Model to deal with mutlicollinearity.
+
+## LASSO Regression
+
+Previously, we failed to fit OLS Regression Model to the (given) data. Additionally, we has proven multicollinearity among the predictors. Therefore, it is essential to use Least Absolute Shrinkage and Selection Operator regression to remove highly-correlated variables by shrinking their coefficients completely to zero.
+
+In the following sections, Lasso Regression would be applied to standardized data and raw data separately to compare the performances on the data.
+
+### Standardize Data and Fit LASSO Regression Model
+
+```{r}
+# ensure reproducible results of random variables model fitting
+set.seed(123)
+
+# alpha=1 gives LASSO
+lasso.cv = cv.glmnet(x,y, type.measure="mse", standardize=TRUE, alpha=1, family="gaussian", nlambda=200, nfolds = 10)
+
+# print best values of lambda
+print(lasso.cv)
+
+# check the coefficients of predictors when applying the best lambda value
+round(cbind(coef(lasso.cv, s='lambda.min'), coef(lasso.cv, s='lambda.1se')), digits=3)
+```
+There are two $\lambda$ values in need of consideration. I will choose $\lambda$=0.2096 since it generates the lowest MSE value of 31.17. Furthermore, accordingly to the table of the coefficients when lambda is 0.2096 and coupled with the last column of the "Nonzero", it indicates that 22 of 45 variables are important in the Lasso Regression Model. 
+
+We failed to choose lambda.1se for since MSE values are higher and the model elminates the majority of our predictors, which may heavily the accuracy of the prediction if the this lambda value is chosen as optimal.
+
+### Visualize Lasso Regression Model
+
+```{r}
+plot(lasso.cv)
+abline(h = lasso.cv$cvup[lasso.cv$index[1]], lty = 4)
+```
+
+```{r}
+lasso = glmnet(x,y, alpha=1)
+plot(lasso, xvar='lambda')
+abline(v=log(lasso.cv$lambda.min), lty=3)
+abline(v=log(lasso.cv$lambda.1se), lty=3)
+```
+
+### Train Lasso Model To Predict VIX values
+```{r}
+# use lambda min to train model to predict VIX
+predictions_lasso <- glmnet(x, y, alpha=1, lambda=lasso.cv$lambda.min) %>% predict(x) %>% as.vector()
+
+# Model performance metrics
+RMSE = RMSE(predictions_lasso, y)
+RMSE
+
+# find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((predictions_lasso - y)^2)
+
+# find R-squared
+rsq <- 1 - sse/sst
+rsq
+```
+
+### Conclusive Statements On Lasso Regression Model
+
+Lasso Regression Model yields a RMSE value of 4.9940 and R-Squared value of 0.5709. This shows 57.09% of the variability of VIX accounted for by the EMV trackers. I will continue to Ridge Regression Implementation. 
+
+
+## Ridge Regression
+
+Another way we could try to deal with multicollinearity is to apply Ridge Regression Model. Multicollinearity is resolved through the model by driving the coefficients of all predictors to zero.
+
+In the following section, Ridge Regression would be applied to standardized and raw data and their performances are compared to obtain the better model fitting.
+
+### Standardize Data and Fit Ridge Regression Model
+
+```{r}
+set.seed(123)
+ridge.cv = cv.glmnet(x, y, type.measure="mse", alpha=0, family="gaussian", nlambda=200, nfolds=10, standardize = TRUE)
+
+# print model final lambda values
+print(ridge.cv)
+
+# check coefficients of predictors with the according lambda values
+round(cbind(coef(ridge.cv, s='lambda.min'), coef(ridge.cv, s='lambda.1se')), digits=3)
+
+```
+The model displays two lambda values: lambda.min(2.966) and lambda.1se(31.431). Since $\lambda$=2.966 has a lower MSE values (31.70 < 34.71), lambda.min is the selected optimal value of the model. Furthermore, the last columns of the summary of the ridge model reveals that the implemented model has the same number of remaining (important) variables, with some of them shrunk further towards zero than others. 
+
+### Visualize Ridge Regression Model
+
+```{r}
+plot(ridge.cv)
+abline(h=ridge.cv$cvup[ridge.cv$index[1]], lty=4)
+```
+
+```{r}
+ridge = glmnet(x, y, alpha = 0)
+plot(ridge, xvar = 'lambda')
+abline(v = log(ridge.cv$lambda.min), lty = 3)
+abline(v = log(ridge.cv$lambda.1se), lty = 3)
+```
+
+```{r}
+predictions_ridge <- glmnet(x, y, alpha = 0, lambda = ridge.cv$lambda.min) %>% predict(x) %>% as.vector()
+
+# Model performance metrics
+RMSE = RMSE(predictions_ridge, y)
+RMSE
+
+# find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((predictions_ridge - y)^2)
+
+# find R-squared
+rsq <- 1 - sse/sst
+rsq
+```
+
+### Conclusive Statements On Ridge Regression Model
+
+As calculated, Ridge Regression Model yields a RMSE score of 5.053352 and a R-Squared value of 0.5607. This shows that 56.07% of the variability of VIX is explained by the predictor variables. 
+
+## Elastic Net Regression
+
+In previous sections, Lasso Regression Method was conducted with $\alpha$=1 and Ridge Regression Method was conducted with $\alpha$=0. However, since $\alpha$ can vary in range of 0 and 1, we can continue to build Elastic Net Regression Model and tune to the predictions to see whether we could achieve a better model with different $\alpha$ and $\lambda$ values.
+
+The goal is to find the optimal $\alpha$ and $\lambda$ using Elastic Net Regression Method.
+
+### Fit Elastic Net Regression
+```{r}
+k <- 10
+set.seed(123)
+# implement train_control variable
+train_control <- trainControl(method = "repeatedcv", number = k, repeats = 3, search = "random")
+
+# build elastic regression model
+elastic_model <- train(y ~ ., data=cbind(x,y), method = "glmnet", preProcess = c("center", "scale"), tuneLength = 100, trControl = train_control)
+```
+
+```{r}
+print(elastic_model$finalModel$tuneValue)
+```
+From Elastic Net Regression model, the best value of alpha (0.8930511) and the best value of lambda (0.158184) are extracted. I will proceed to fit these parameters to train the model for VIX predictions.
+
+### Train Elastic Net Regression Model With Tuned Values
+```{r}
+# predict VIX with adjusted lambda and alpha values
+predictions_enet <- glmnet(x, y, alpha = elastic_model$finalModel$tuneValue$alpha, lambda = elastic_model$finalModel$tuneValue$lambda) %>% predict(x) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet = RMSE(predictions_enet, y)
+RMSE_enet
+
+# Multiple R-squared
+rsq <- cor(y, predictions_enet)^2
+rsq
+
+# refitting best model 
+enet <- glmnet(x, y, alpha = elastic_model$finalModel$tuneValue$alpha, lambda = elastic_model$finalModel$tuneValue$lambda)
+```
+
+As calculated, the trained Elastic Net Regression model generates the RMSE score of 4.891059 and the R-squared value of 0.5916627. This shows that 59.16% of the variability of VIX is explained by the predictors in the model.
+
+## Comparing Implemented Regression Model
+
+Considering the metrics obtained by implementing Lasso Regression, Ridge Regression, and Elastic Net Regression models, it is worth nothing Elastic Net Regression model with $\alpha$=0.8939511 and $\lambda$=0.158184 produce the lowest (best) RMSE score of 4.891059 and highest (best) r-squared value of 0.5916627. This implies the Elastic Net model captures the highest variability percentage (59.16%) with the lowest Root-Mean-Squared-Error value (4.891059), which denotes the model predicts with the best accuracy and the lowest distance from the true mean value.
+
+## Analyse The Best Regression Model
+
+It has been made clear that Net Elastic Regression Model with the adjusted $\alpha$ and $\lambda$ values, net elastic regression model with the tune parameters yields the most accurate predictions of the VIX fear index stock market value.
+
+Considering the coefficients in the slope of the mode:
+```{r}
+enet$beta
+```
+
+As it is established that Elastic Regression Model with tuned $\lambda$ and $\alpha$ parameters, it is reasonable to use to model to explain the sudden changes of VIX values in our data. The volatile changes in the stock market could be explained upon inspection of the coefficients of the variables in the final model. These predictors stand out with noticeably high and low adjusted coefficients in the model:
+
+"Macro – Interest Rates EMV Tracker"                               -0.972395349
+
+"Macro – Trade EMV Tracker"                                        -1.255724284
+
+`Labor Disputes EMV Tracker"                                        2.547544163
+
+"Intellectual Property Matters EMV Tracker"                         1.559192525
+
+"Financial Regulation EMV Tracker"                                  0.891745280
+
+"Immigration EMV Tracker"                                          -2.208387739
+
+"Energy and Environmental Regulation EMV Tracker"                   2.326452080
+
+"Other Regulation EMV Tracker"                                     -1.061998673
+
+"Agricultural Policy EMV Tracker"                                  -3.959537923
+
+These variables' coefficients fall into the range between [-3.95, 2,54], which are the anomalies in the list of the coefficients since other variables either have their coefficients shrunk to zero (insignificance) by the model or their coefficients are approximately close to zero. As the approximately 60% of the variability in VIX is accounted for in addition to the high values in coefficients' in a number of predictors, it is conclusive, these trackers are responsible for the volatile changes which occurred in the past 23 years. Nonetheless, since r-squared value provided by the model, coupled with the fact that the data provided during this time-span is not sparse, the model is reliable to predict the future VIX values. 
+
+Overall, it is clear that the final model witnessed similar distribution of force, which is evidently proven by the similar weight of the predictors. Therefore, the sparsity of force is relatively even when fitting into Net Elastic Regression model. In conclusion, the dominant factor responsible for the surges in VIX values was "Labour Disputes" and "Energy and Environmental Regulation EMV Tracker". 
+
+# Phase 2
+
+Most often, the forces driving the market movements themselves undergo changes when a transition occurs from one segment of time into its following one(s). Use elastic nets to construct predictive regression models for each segment of stock market and then interpret the results with the goal of extracting knowledge about the phenomena causing the regime switches and apparent transitions.
+
+Can you characterize the nature of the most dominant forces responsible for driving the stock market movements within each segment? Are there any pattern on sparsity of forces when comparing chaotic (pink) and normal (blue) segments of the stock market?
+
+Can you provide a coherent picture of mechanisms underlying the sudden volatility changes in stock markets in the past 23 years, by further considering the relatively homogeneous segments of the market?
+
+## Load and Split Data into Appropriate Segments
+
+```{r}
+# data subset from 1990-01 to 1998-06
+segment1 = (raw_data[raw_data$Date > "1989-12" & raw_data$Date < "1998-07",])
+segment1 <- segment1[,-1]
+y1 <- segment1$VIX
+x1 <- model.matrix(VIX~., segment1)[,-1]
+
+# data subset from 1998-07 to 2003-03
+segment2 = (raw_data[raw_data$Date > "1998-06" & raw_data$Date < "2003-04",])
+segment2 <- segment2[,-1]
+y2 <- segment2$VIX
+x2 <- model.matrix(VIX~., segment2)[,-1]
+
+# data subset from 2003-04 to 2007-12
+segment3 = (raw_data[raw_data$Date > "2003-03" & raw_data$Date < "2008-01",])
+segment3 <- segment3[,-1]
+y3 <- segment3$VIX
+x3 <- model.matrix(VIX~., segment3)[,-1]
+
+# data subset from 2008-01 to 2009-09
+segment4 = (raw_data[raw_data$Date > "2007-12" & raw_data$Date < "2009-10",])
+segment4 <- segment4[,-1]
+y4 <- segment4$VIX
+x4 <- model.matrix(VIX~., segment4)[,-1]
+
+# data subset from 2009-10 to 2019-12
+segment5 = (raw_data[raw_data$Date > "2009-09" & raw_data$Date < "2020-01",])
+segment5 <- segment5[,-1]
+y5 <- segment5$VIX
+x5 <- model.matrix(VIX~., segment5)[,-1]
+
+# data subset from 2020-01 to 2022-12
+segment6 = (raw_data[raw_data$Date > "2019-12" & raw_data$Date < "2023-01",])
+segment6 <- segment6[,-1]
+y6 <- segment6$VIX
+x6 <- model.matrix(VIX~., segment6)[,-1]
+```
+
+## Fit Net Elastic Regression Models and Analyze Individual Models
+
+### Segment 1
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control1 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment1 <- train(VIX ~., data = segment1, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control1)
+```
+
+```{r}
+print(elastic_model_segment1$bestTune)
+```
+The optimal $\alpha$ and $\lambda$ values of Elastic Net Regression model for segment 1 are 0.1272727 and 1.268469 respectively.
+
+```{r}
+predictions_enet_segment1 <- glmnet(x1, y1, alpha = elastic_model_segment1$finalModel$tuneValue$alpha, lambda = elastic_model_segment1$finalModel$tuneValue$lambda) %>% predict(x1) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment1 <- RMSE(predictions_enet_segment1, y1)
+RMSE_enet_segment1
+
+# Multiple R-squared
+rsq1 <- cor(y1, predictions_enet_segment1)^2
+rsq1
+
+# refitting best model 
+enet1 <- glmnet(x1, y1, alpha = elastic_model_segment1$finalModel$tuneValue$alpha, lambda = elastic_model_segment1$finalModel$tuneValue$lambda)
+```
+
+As the optimal parameters are fitted onto the Elastic Net Regression model, the model generates a RMSE score of 3.233652 and r-squared value of 0.5913916. Therefore, the fitted model can explain 59.13% of the variability of VIX.
+
+```{r}
+enet1$beta
+```
+
+In between January 1990 and June 1998, the model shows relatively consistent values of predictors' coefficients. From the above table of coefficients, the model either deem the majority of predictive variables insignificant and shrunk them close towards zero.
+However, there are also several noticeable coefficients' value: 
+
+"Macro – Trade EMV Tracker"                                        -1.34623219
+
+"Litigation Matters EMV Tracker"                                   -1.19871215
+
+"Labor Disputes EMV Tracker"                                        1.40101847
+
+"Financial Regulation EMV Tracker"                                  0.95036498
+
+"Labor Regulations EMV Tracker"                                     2.85252369
+
+"Government-Sponsored Enterprises EMV Tracker"                     -1.26283393
+
+"Trade Policy EMV Tracker"                                         -1.47212754
+
+Upon inspecting the line chart provided, several high points and low points in VIX values can be explained by the weight of these variables. However, it is also noticeable the number of outlying variables is only 7. Plus, the deviations of the coefficients when comparing to the other are not statistically outstanding. Coupled with the fact that approximately 60% of the variability in VIX is explainable by the predictors, it is conclusive why this segment was filled with fluctuated but stable values of VIX. Nonetheless, when inspecting given line graph of VIX in this segment, there is one sudden spike in value near the beginning of the graph, which could be caused by "Labor Regulations EMV Tracker" and "Labor Disputes EMV Tracker" since their coefficients are relatively and positively large during this time. Hence, these are the forces that drove the changes during this time. 
+
+### Segment 2
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control2 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment2 <- train(VIX ~., data = segment2, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control2)
+```
+
+```{r}
+print(elastic_model_segment2$bestTune)
+```
+The optimal $\alpha$ and $\lambda$ values are 1 and 1.543415, which means Elastic Net Model views Lasso Regression as the best model to make predictions for this segment in time.
+
+```{r}
+predictions_enet_segment2 <- glmnet(x2, y2, alpha = elastic_model_segment2$finalModel$tuneValue$alpha, lambda = elastic_model_segment2$finalModel$tuneValue$lambda) %>% predict(x2) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment2 <- RMSE(predictions_enet_segment2, y2)
+RMSE_enet_segment2
+
+# Multiple R-squared
+rsq2 <- cor(y2, predictions_enet_segment2)^2
+rsq2
+
+# refitting best model 
+enet2 <- glmnet(x2, y2, alpha = elastic_model_segment2$finalModel$tuneValue$alpha, lambda = elastic_model_segment2$finalModel$tuneValue$lambda)
+```
+
+When fitted with the optimal parameters, the Elastic Net Regression model of segment 2 yields a RMSE score of 4.409696 and a R-squared value of 0.3924318. This implies 39.24% of the variability of the VIX can be explained by the model, which is relatively low compared to any of the implemented models. 
+
+```{r}
+enet$beta
+```
+
+According to the summary of the coefficients of this model, the majority of the coefficients of the predictors are not shrunk to zero by the model. These variables are outstanding in correspondence to their coefficients: 
+
+"Macro – Interest Rates EMV Tracker"                               -0.972395349
+
+`Macro – Trade EMV Tracker"                                        -1.255724284
+
+"Labor Disputes EMV Tracker"                                        2.547544163
+
+"Intellectual Property Matters EMV Tracker"                         1.559192525
+
+"Government Spending, Deficits, and Debt EMV Tracker"              -0.467761682
+
+"Financial Regulation EMV Tracker"                                  0.891745280
+
+"Competition Policy EMV Tracker"                                    0.639757193
+
+"Immigration EMV Tracker"                                          -2.208387739
+
+"Energy and Environmental Regulation EMV Tracker"                   2.326452080
+
+"Other Regulation EMV Tracker"                                     -1.061998673
+
+"Elections and Political Governance EMV Tracker"                   -0.068869415
+
+"Agricultural Policy EMV Tracker"                                  -3.959537923
+
+Upon inspection of the provided line graph, it is apparent this segment is filled with numerous sudden changes in VIX values. These changes can be accounted for by the above variables, with outstanding ones such as "Labor Disputes EMV Trackers", "Intellectual Property Matters EMV Tracker", "Immigration EMV Tracker", "Energy and Environmental Regulation EMV Tracker", and "Agricultural Policy EMV Tracker". However, it is also noticeable that the prediction accuracy in the variability in VIX during this time as explained by the model is relatively low with approximately 39 percent. This shows that even though, these variables heavily affected the values in VIX during this time, the variability is likely to be affected by underlying factors. In conclusions, the dominant factors driving the changes in VIX values during July 1998 and March 2003 are "Labor Disputes", "Immigration", "Energy and Environmental Regulation" and "Agricultural Policy". 
+
+### Segment 3
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control3 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment3 <- train(VIX ~., data = segment3, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control3)
+```
+
+```{r}
+print(elastic_model_segment3$bestTune)
+```
+The optimal values of $\alpha$ and $\ambda$ are 0.5090909 and 1.1017793 respectively. 
+
+```{r}
+predictions_enet_segment3 <- glmnet(x3, y3, alpha = elastic_model_segment3$finalModel$tuneValue$alpha, lambda = elastic_model_segment3$finalModel$tuneValue$lambda) %>% predict(x3) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment3 <- RMSE(predictions_enet_segment3, y3)
+RMSE_enet_segment3
+
+# Multiple R-squared
+rsq3 <- cor(y3, predictions_enet_segment3)^2
+rsq3
+
+# refitting best model 
+enet3 <- glmnet(x3, y3, alpha = elastic_model_segment3$finalModel$tuneValue$alpha, lambda = elastic_model_segment3$finalModel$tuneValue$lambda)
+```
+
+When fitted the optimal parameters into the Elastic Net Regression model for segment 2, the model generates a RMSE score of 2.736714 and a r-squared value of 0.5121013. This indicates that 51.21% of the variability of VIX can be explained by the predictors in the model. 
+
+```{r}
+enet3$beta
+```
+
+It is apparent the majority of the variables during this timeline are viewed as insignificant by the elastic net model. Hence, their coefficients are shrunk to zero. Plus, accompanied this with the provided line chart, it is aligned that the VIX values stabilized since the predictors are predicted to account for approximately 50 percent of the changes and these predictors' coefficients are relatively similar. Except for "Energy and Environmental Regulation EMV Tracker" (3.71394641), the rest of the coefficients are all close to zero and statistically similar. Plus, there are only small changes in VIX values during this time, it is conclusive that the dominant factor driving the increase in VIX during this time was "Energy and Environmental Regulation" and the factor determining the drops in VIX was "Marco - Trade". 
+
+### Segment 4
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control4 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment4 <- train(VIX ~., data = segment4, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control4)
+```
+
+```{r}
+print(elastic_model_segment4$bestTune)
+```
+The optimal $\alpha$ and $\lambda$ values are 0.1 and 17.34995. It is worth nothing that the $\lambda$ value is the highest I have observed so far. 
+
+```{r}
+predictions_enet_segment4 <- glmnet(x4, y4, alpha = elastic_model_segment4$finalModel$tuneValue$alpha, lambda = elastic_model_segment4$finalModel$tuneValue$lambda) %>% predict(x4) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment4 <- RMSE(predictions_enet_segment4, y4)
+RMSE_enet_segment4
+
+# Multiple R-squared
+rsq4 <- cor(y4, predictions_enet_segment4)^2
+rsq4
+
+# refitting best model 
+enet4 <- glmnet(x4, y4, alpha = elastic_model_segment4$finalModel$tuneValue$alpha, lambda = elastic_model_segment4$finalModel$tuneValue$lambda)
+```
+
+When fitted the optimal parameters, the Elastic Net Regression model in segment 3 yields a RMSE score of 6.785265 and a r-squared value of 0.7262295, which is also the highest R-squared value so far. This indicates that 72.62% of the variability in VIX can be explained by predictors in the model.
+
+```{r}
+enet4$beta
+```
+
+Given that the provided line chart visualizes many volatile changes during January 2008 and September 2009, these variables are responsible for it "Intellectual Property Policy EMV Tracker" (5.84008381) and "Other Regulation EMV Tracker" (-4.37890884). With a high and also outlying coefficients' values in addition to the fact that the model predicts approximately 70 percent of the VIX variability, it is conclusive that "Intellectual Property Policy" accounted for the spikes in VIX values during this time and "Other Regulation" explained the drops in VIX values during this same timeline. However, it is noticeable that the spike in VIX values were the second largest in 23 years. Therefore, the contributing factors could be "Labor Regulations", "Trade Policy" and "Healthcare Policy" during this time to the increase in VIX. Finally, it is also worth nothing we are facing the largest RMSE value so far, which could be explained by the smaller sample size during this time frame. Hence, the reliability of the model is lower albeit the high R-squared value.                               
+
+### Segment 5
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control5 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment5 <- train(VIX ~., data = segment5, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control5)
+```
+
+```{r}
+print(elastic_model_segment5$bestTune)
+```
+The optimal $\alppha$ and $\lambda$ values are 0.5 and 0.3663727 respectively.
+
+```{r}
+predictions_enet_segment5 <- glmnet(x5, y5, alpha = elastic_model_segment5$finalModel$tuneValue$alpha, lambda = elastic_model_segment5$finalModel$tuneValue$lambda) %>% predict(x5) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment5 <- RMSE(predictions_enet_segment5, y5)
+RMSE_enet_segment5
+
+# Multiple R-squared
+rsq5 <- cor(y5, predictions_enet_segment5)^2
+rsq5
+
+# refitting best model 
+enet5 <- glmnet(x5, y5, alpha = elastic_model_segment5$finalModel$tuneValue$alpha, lambda = elastic_model_segment5$finalModel$tuneValue$lambda)
+```
+
+When fitted the optimal parameters, the Elastic Net Regression model in segment 5 yield a RMSE of 3.001021 and 0.7005265. This shows that the model explain the variability in VIX values accurately with approximately 70.05% with a relatively low RMSE score also, with 3.001021. Hence, the model is reliable in predicting future VIX values during this time frame. 
+
+```{r}
+enet5$beta
+```
+
+According to the given line chart visualizing the VIX values during October 2009 and December 2019, it is apparent during this extended period of time, VIX values displayed a stable increase and decrease. VIX values mostly fluctuated around the mean value at the time, which is aligned upon inspecting the coefficients of the predictors. The large number of predictors either have their coefficients shrunk to zero and close towards it. However, there are also noticeable variables in this data segment: 
+
+"Macro – Other Financial Indicators EMV Tracker"                    1.04505442
+
+"Macro – Real Estate Markets EMV Tracker"                           1.10825258
+
+"Macro – Trade EMV Tracker"                                         1.53199583
+
+"Healthcare Matters EMV Tracker"                                   -0.91162828
+
+"Litigation Matters EMV Tracker"                                   -0.43902604
+
+"Competition Matters EMV Tracker"                                   0.81299404
+
+"Intellectual Property Matters EMV Tracker"                         1.14657297
+
+"Financial Regulation EMV Tracker"                                  1.06022651
+
+"Intellectual Property Policy EMV Tracker"                          5.07105499
+
+"Immigration EMV Tracker"                                          -2.79648921
+
+"Agricultural Policy EMV Tracker"                                  -2.83796759
+
+Coupled with the fact that the model predicts VIX's variability with approximately 70 percent in accuracy with relatively low RMSE value, it is conclusive that these variables affected the increase and decrease in VIX values during this period of time, albeit the changes are relatively small. Furthermore, several variables among these predictors are more outstanding than others. This proves that the most dominant force that drove the increase in VIX value during this time was "Intellectual Property Policy" and the factor driving the decrease was "Agricultural Policy". 
+
+### Segment 6
+
+```{r}
+k <- 10 
+set.seed(123)
+train_control6 <- trainControl(method = "repeatedcv", number = k)
+
+elastic_model_segment6 <- train(VIX ~., data = segment6, method = "glmnet", preProcess = c('center', 'scale'), tuneLength = 100, trControl = train_control6)
+```
+
+It is worth nothing some of the predictions' entries are zero, therefore, their variances are zero. This could be the case if a high value of bias is introduced in the data set. Therefore, this segment of the timeline presents anomalies, such as relatively spike in VIX values. 
+
+```{r}
+print(elastic_model_segment6$bestTune)
+```
+The optimal $\alpha$ and $\lambda$ values are 0.1 and 0.9498312 respectively.
+
+```{r}
+predictions_enet_segment6 <- glmnet(x6, y6, alpha = elastic_model_segment6$finalModel$tuneValue$alpha, lambda = elastic_model_segment6$finalModel$tuneValue$lambda) %>% predict(x6) %>% as.vector()
+
+# Model performance metrics
+RMSE_enet_segment6 <- RMSE(predictions_enet_segment6, y6)
+RMSE_enet_segment6
+
+# Multiple R-squared
+rsq6 <- cor(y6, predictions_enet_segment6)^2
+rsq6
+
+# refitting best model 
+enet6 <- glmnet(x6, y6, alpha = elastic_model_segment6$finalModel$tuneValue$alpha, lambda = elastic_model_segment6$finalModel$tuneValue$lambda)
+```
+
+When fitted the optimal parameters, the Elastic Regression Model in the last time segment yields a RMSE score 2.942347 and a R-squared value of 0.8825265. This implies that 88.25% of the variability in VIX is accounted for by predictors in the model. However, the accuracy could be biased by the smaller sample size. 
+
+```{r}
+enet6$beta
+```
+
+The accuracy in predictions in VIX's variability is explained by the fact that few of the variables have their coefficients shrunk by the model. Plus, the accuracy is also accounted for by the fact that many coefficients of the variables are distant from zero. Furthermore, according to provided line chart, between January 2022 and September 2022, it is shown that there were massive increase in VIX value at the beginning of the time period following by smaller but also volatile changes. This marks another period of time filled with major shifts in VIX values in the last 23 years. Plus, among these coefficients of the predictive variables, these stands out as relatively large or small for all the variables:
+
+"Macro – Other Financial Indicators EMV Tracker"                   -3.84446792
+
+"Macro – Trade EMV Tracker"                                        -4.79649800
+
+"Exchange Rates EMV Tracker"                                       10.27495605
+
+"Competition Matters EMV Tracker"                                   1.08636428
+
+"Labor Disputes EMV Tracker"                                       -2.02081576
+
+"Intellectual Property Matters EMV Tracker"                         3.90589574
+
+"Labor Regulations EMV Tracker"                                    -3.78218297
+
+"Immigration EMV Tracker"                                           2.39681201
+
+"Energy and Environmental Regulation EMV Tracker"                   5.35169582
+
+"Lawsuit and Tort Reform, Supreme Court Decisions EMV Tracker"     -2.24967356
+
+"Housing and Land Management EMV Tracker"                           1.16965277
+
+"Other Regulation EMV Tracker"                                      1.81354343
+
+"Trade Policy EMV Tracker"                                          4.02947787
+
+"Food and Drug Policy EMV Tracker"                                  2.52401612
+
+"Elections and Political Governance EMV Tracker"                    2.88971725
+
+"Agricultural Policy EMV Tracker"                                   4.09032918
+
+It is clear that the dominant force that drove the largest spike in VIX value ,not only in the last period of time but in 23 years, was the "Exchange Rates". Other contributing factors contributing positively to such a surge were "Intellectual Property Matters", "Energy and Environmental Regulation", "Trade Policy" and "Agricultural Policy". Also, following this phenomenon, the VIX value regressed greatly back to the true mean, which were driven by "Macro - Trade" factor. Other variables that negatively affected the VIX values were "Macro - Other Financial Indicators", "Labor Regulations" and "Lawsuit and Tort Reform, Supreme Court Decisions".  
+
+## Compare Sparsity of Forces Between Blue and Pink Segments
+
+In the past 23 years, VIX values were marked by periods of stability which is marked by the blue color in the given line graph and periods of volatile changes which is marked by the pink color. 
+
+The normal segments, in which VIX values did not experience many sudden changes, the forces (variables) driving the changes in these time frames displayed similar weigh when fitting to the Net Elastic Regression Model with a tune adjusted variance and bias trade-off. These segments were characterized by variables' coefficients approximately close towards zero, or that they were statistically insignificant. In contrast, the chaotic (pink) segments were marked by small sample sizes, which greatly influenced the bias in the model, lifting the accuracy most of the time. Additionally, all of them witnessed major spikes in VIX values and also major drops, which were the effects of dominating EMV Trackers, such as "Exchange Rates", "Intellectual Policies" and "Agricultural Policy".
+
+Overall, during the blue segments, the force contributing to the changes in VIX is more sparse among the EMV trackers, whereas, the pink segments were highlighted the dominating force clustering among only a few EMV Trackers. 
+
+#END
